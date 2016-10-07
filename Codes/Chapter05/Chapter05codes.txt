@@ -1,0 +1,455 @@
+Listing 5-1. Dropping a pull subscription
+/* Execute this on the Distributor server on the distribution database. The Distributor server is on the same machine as the Publisher server */
+
+use distribution
+go
+
+/*Declare a table variable */
+
+declare @subscription_pull table
+(publisher_id smallint,
+publisher_db sysname,
+subscriber_db sysname,
+subscription_type int,
+sync_type tinyint,
+status tinyint);
+
+/* Insert data into the table variable from the MSsubscriptions table in the distribution database */
+
+insert into @subscription_pull select
+publisher_id,
+publisher_db,
+subscriber_db,
+subscription_type,
+sync_type,
+status from distribution..MSsubscriptions
+where subscription_type=1 and status =2
+
+/* Check the data of the @subscription_pull table variable */
+
+select * from @subscription_pull
+
+/* Declare table variable that will store the Publisher, the publication database, the type of publication, and the name of the publication using sp_helpsubscription_properties */
+
+declare @subscriberinfo table
+(publisher sysname,
+publisher_db sysname,
+publication_type int,
+publication sysname);
+
+/* Insert the data into the @subscriberinfo table variable */
+
+insert into @subscriberinfo
+exec sp_helpsubscription_properties
+
+/* Check the data for the @subscriberinfo table variable */
+select * from @subscriberinfo
+
+/* Execute on the Subscriber on the subscription db - use the name of the Publisher, the publication database, and the name of the publication*/
+
+exec sp_droppullsubscription 'BIO-V7V30JTZLZS','mysales_new','pub_mysalesnew'
+
+/* Finally, on the Publisher server on the publication database, remove the subscription for the Publisher*/
+
+exec sp_dropsubscription 'pub_mysalesnew','all', 'BIO-V7V30JTZLZS'
+go
+
+Listing 5-2. Dropping a push subscription
+/* Execute this on the Distributor server on the distribution database. The Distributor server is on the same machine as the Publisher server */
+
+use distribution
+go
+
+/*Declare a table variable */
+
+declare @subscription_push table
+(publisher_id smallint,
+publisher_db sysname,
+subscriber_db sysname,
+subscription_type int,
+sync_type tinyint,
+status tinyint);
+
+/* Insert data into the table variable from the MSsubscriptions table in the distribution database */
+
+insert into @subscription_push select
+publisher_id, publisher_db, subscriber_db, subscription_type, sync_type,
+status from distribution..MSsubscriptions
+where subscription_type=0 and status =2
+
+/* Check the data of the @subscription_push table variable */
+
+select * from @subscription_push
+
+/* Declare table variable that will store the Publisher and the 
+Subscriber information from the MSSubscriber_info table */
+
+declare @subscriberinfo table
+(publisher sysname,
+subscriber sysname);
+
+/* Insert the data into the @subscriberinfo table variable */
+
+insert into @subscriberinfo
+select publisher, subscriber from distribution..MSsubscriber_info
+
+/* Check the data for the @subscriberinfo table variable */
+select * from @subscriberinfo
+
+/* Finally, on the Publisher server on the publication database  
+remove the subscription for the Publisher*/
+
+exec sp_dropsubscription 'pub_mysalesnew','all', 'BIO-V7V30JTZLZS'
+go
+Listing 5-3. Dropping a publication
+/* Use the distribution database to find the name of the publication */
+
+Use distribution
+Go
+
+Select * from MSpublications
+Go
+
+/* Use the publication database */
+Use mysales_new
+Go
+
+/* Finally drop the publication */
+sp_droppublication 'pub_mysalesnew'
+Listing 5-4. Creating a snapshot publication
+/* Enable the database for replication */
+
+use master
+exec sp_replicationdboption @dbname = 'mysales_new', 
+@optname = 'publish', 
+@value = 'true'
+go
+
+/* Add the snapshot publication */
+
+use [mysales_new]
+
+exec sp_addpublication @publication = 'pub_mysalesnew',
+@description = 'Snapshot publication of database ''mysales_new''
+from Publisher ''SHW-TOR-WS039''.',
+@sync_method = 'native',
+@repl_freq = 'snapshot',
+@status = 'active',
+@allow_push = 'true',
+@allow_pull = 'true',
+@allow_anonymous = 'false',
+
+@immediate_sync = 'false',
+@allow_sync_tran = 'false',
+@autogen_sync_procs = 'false',
+@retention = 336,
+@allow_queued_tran = 'false',
+@snapshot_in_defaultfolder = 'true',
+@compress_snapshot = 'false',
+@allow_dts = 'false',
+@allow_subscription_copy = 'false',
+@add_to_active_directory = 'false',
+@replicate_ddl=1
+go
+Listing 5-5. Creating the Snapshot Agent
+/* Execute the stored procedure under the current publication database*/
+
+use [mysales_new]
+
+exec sp_addpublication_snapshot @publication = 'pub_mysalesnew',
+@frequency_type = 8,
+@frequency_interval = 4,
+@frequency_relative_interval = 1,
+@frequency_recurrence_factor = 1,
+@frequency_subday = 1,
+@frequency_subday_interval = 1,
+@active_start_time_of_day = 0,
+@active_end_time_of_day = 235959,
+@active_start_date = 0,
+@active_end_date = 0,
+@job_login = null,
+@job_password = null,
+@publisher_security_mode = 1
+go
+Listing 5-6. Granting publication access to the users
+/* Grant access to the current publication database and execute 
+on the publication database*/
+
+exec sp_grant_publication_access @publication = 'pub_mysalesnew',
+@login = 'distributor_admin'
+go
+exec sp_grant_publication_access @publication = 'pub_mysalesnew',
+@login = 'sa'
+go
+Listing 5-7. Adding the articles to the publication
+/* Adding each of the articles in the current publication */
+
+use [mysales_new]
+exec sp_addarticle @publication = 'pub_mysalesnew',
+@article = 'AccountsReceivable',
+@source_owner = 'myfinance',
+@source_object = 'AccountsReceivable',
+@type = 'logbased',
+@description = null,
+@creation_script = null,
+@pre_creation_cmd = 'drop',
+
+@destination_table = 'AccountsReceivable',
+@destination_owner = 'myfinance',
+@vertical_partition = 'false'
+go
+
+use [mysales_new]
+exec sp_addarticle @publication = 'pub_mysalesnew',
+@article = 'AccountInvoice',
+@source_owner = 'myfinance',
+@source_object = 'AccountInvoice',
+@type = 'logbased',
+@description = null,
+@creation_script = null,
+@pre_creation_cmd = 'drop',
+
+@destination_table = 'AccountInvoice',
+@destination_owner = 'myfinance',
+@vertical_partition = 'false'
+go
+
+use [mysales_new]
+exec sp_addarticle @publication = 'pub_mysalesnew',
+@article = 'BillTo',
+@source_owner = 'myorder'
+@source_object = 'BillTo',
+@type = 'logbased',
+@description = null,
+@creation_script = null,
+@pre_creation_cmd = 'drop',
+
+@destination_table = 'BillTo',
+@destination_owner = 'myorder',
+@vertical_partition = 'false'
+go
+From sidebar Dropping An Article
+
+You can drop an article by executing the sp_droparticle stored procedure on the publication database on the Publisher server. The syntax for the code is as follows:
+sp_droparticle @publication, @article, @ignore_distributor, 
+@force_invalidate_snapshot, @publisher, @from_drop_publication
+Listing 5-8. Starting the Snapshot Agent job
+/* Start the Snapshot Agent and execute this on the publication database*/
+
+exec sp_startpublication_snapshot 'pub_mysalesnew'
+Listing 5-9. Running the Snapshot Agent executable
+/* Execute on the distribution database */
+
+use distribution
+go
+
+declare @distpub sysname;
+set @distpub =(select convert(sysname, serverproperty('servername')))
+declare @publisherdatabases table
+(pub_id smallint,
+pubdb sysname,
+id int)
+insert into @publisherdatabases(pub_id,pubdb, id)
+select publisher_id, publisher_db, id from MSpublisher_databases
+
+if (select top 1 publication_type from MSpublications)<>1
+begin
+print 'this is not snapshot replication'
+end
+else
+begin
+declare @pubname sysname;
+declare @pubdb sysname;
+declare @cmd varchar(4000);
+set @pubname=
+(select top 1 b.publication
+from @publisherdatabases a, MSpublications b where a.pub_id
+=b.publisher_id)
+set @pubdb= (select pubdb from @publisherdatabases)
+/*end */
+
+/* Execute the Snapshot Agent */
+set @cmd=
+'"C:\Program Files\Microsoft SQL Server\90\COM\snapshot.exe"
+-Publication @pubname -Publisher @distpub -Distributor @distpub
+ -DistributorSecurityMode 1'
+exec xp_cmdshell '@cmd'
+end
+From the Sidebar:Enabling xp_cmdshell
+/*Execute this on the master database */
+Use master
+Go
+
+Exec sp_configure 'show advanced options', 1
+Go
+Reconfigure with override
+Go
+Exec sp_configure 'xp_cmdshell', 1
+Go
+Reconfigure with override
+Go
+Listing 5-10. Checking the status of the type of subscriptions for the publication
+/* Check the allow_push column to see whether the subscription supports push subscriptions. Execute this on the distribution database*/
+
+use distribution
+go
+Select publication, publisher_db, publication_type, allow_push from MSpublications
+Listing 5-11. Adding the push subscription
+/* Run the stored procedure on the publication database that supports 
+push subscription */
+
+use mysales_new
+go
+
+exec sp_addsubscription @publication = 'pub_mysalesnew'
+@subscriber = 'BIO-V7V30JTZLZS',
+@destination_db ='subpush_mysales_new',
+@subscription_type = 'Push',
+@sync_type = 'automatic',
+@article = 'all',
+@update_mode = 'read only',
+@subscriber_type = 0
+Listing 5-12. Executing the agent
+/*Execute this code on the publication database */
+
+exec sp_addpushsubscription_agent @publication = 'pub_mysalesnew',
+@subscriber = 'BIO-V7V30JTZLZS',
+@subscriber_db = 'subpush_mysales_new',
+@job_login = null,
+@job_password = null,
+@subscriber_security_mode = 1,
+@frequency_type = 1,
+@frequency_interval = 0,
+@frequency_relative_interval = 0,
+@frequency_recurrence_factor = 0,
+@frequency_subday = 0,
+@frequency_subday_interval = 0,
+@active_start_time_of_day = 0,
+@active_end_time_of_day = 0,
+@active_start_date = 0,
+@active_end_date = 19950101,
+@enabled_for_syncmgr = 'False',
+@dts_package_location = 'Distributor'
+Listing 5-13. Checking whether the publication supports pull subscriptions
+/*Execute it on the publication database */
+
+sp_helppublication 'pub_mysalesnew'
+Listing 5-14. Enabling the names of the publication, publication database, and Publisher server on the Subscriber server
+/* Execute the code on the Subscriber server.  Execute this on the 
+subscription database */
+
+declare @publisher sysname;
+declare @publication sysname;
+declare @pbdb sysname;
+set @publisher='BIO-V7V30JTZLZS';
+set @publication = 'pub_mysalesnew';
+set @pbdb ='mysales_new';
+
+/* Add the pull subscription on the Subscriber server. Execute this on the subscription database */
+
+exec sp_addpullsubscription
+@publisher=@publisher,
+@publication=@publication,
+@publisher_db=@pbdb,
+
+@update_mode='read only'
+
+/* Add the Distribution Agent to synchronize the pull subscription.  Execute this on the subscription database*/
+
+exec sp_addpullsubscription_agent
+@publisher=@publisher,
+@publication=@publication,
+@publisher_db=@pbdb,
+@distributor=@publisher
+@job_login=null,
+@job_password=null
+Listing 5-15. Enabling the subscriptions on the Publisher server
+/* Execute this on the Publisher server. Execute on the publication database */
+/*declare the variables first */
+
+declare @subscriber sysname;
+declare @publication sysname;
+declare @subdb sysname;
+set @subscriber= 'BIO-V7V30JTZLZS';
+set @publication ='pub_mysalesnew';
+set @subdb ='subpull_mysales_new';
+
+/* Now register the pull subscription */
+
+exec sp_addsubscription
+@publication=@publication,
+@subscriber=@subscriber,
+@destination_db=@subdb,
+@article='all',
+@subscription_type='pull',
+@subscriber_type=0,
+@update_mode='read only'
+Listing 5-16. Synchronizing the pull subscription using the Distribution Agent
+declare @subscriber sysname;
+declare @subdb sysname;
+declare @publisher sysname;
+declare @pbdb sysname;
+declare @distributor sysname;
+declare @cmd varchar(1000);
+
+set @subscriber='BIO-V7V30JTZLZS';
+set @subdb ='subpull_mysales_new';
+set @publisher='BIO-V7V30JTZLZS';
+set @distributor = @publisher;
+set @pbdb ='mysales_new';
+
+
+/* Execute the Distribution Agent */
+
+set @cmd=
+'"C:\Program Files\Microsoft SQL Server\90\COM\distribution.exe"
+-Subscriber @subscriber -SubscriberDB @subdb -Publisher @publisher
+-PublisherDB @pubdb -Distributor @distributor -DistributorSecurityMode 1 -Continuous
+-SubscriptionStreams 4'
+exec xp_cmdshell '@cmd'
+go
+Listing 5-17. Configuring an anonymous subscription
+/* Execute the code on the Subscriber server; execute this on the
+subscription database*/
+
+declare @publisher sysname;
+declare @publication sysname;
+declare @pbdb sysname;
+
+/* Assign values to variables */
+
+set @publisher='BIO-V7V30JTZLZS';
+set @publication ='pub_mysalesnew_anon';
+set @pbdb ='mysales_new';
+
+/* Add the pull subscription on the Subscriber server; execute this on the subscription database */
+
+exec sp_addpullsubscription
+@publisher=@publisher,
+@publication=@publication,
+@publisher_db=@pbdb,
+
+@update_mode='read only'
+
+/* Add the agent to synchronize the pull subscription; execute this
+on the subscription database*/
+
+exec sp_addpullsubscription_agent
+@publisher=@publisher,
+@publication=@publication,
+@publisher_db=@pbdb,
+@distributor=@publisher,
+@job_login=null,
+@job_password=null
+
+/* Execute sp_addpublication on the Publisher server on the publication database; execute this on the publication database*/
+
+use mysales_new
+go
+
+exec sp_addpublication
+@publication='pub_mysalesnew_anon',
+@allow_pull='true',
+@allow_anonymous='true',
+@immediate_sync='true',
+@independent_agent='true'

@@ -1,0 +1,156 @@
+Code from sidebar To GUI or not to GUI
+
+declare @publisher_name as sysname;
+set @publisher_name =(select name from msdb..MSdistpublishers where name=@@servername);
+print @publisher_name;
+
+/*drop the publisher */
+exec sp_dropdistpublisher @publisher=@publisher_name,@no_checks=0;
+
+declare @distributiondb as sysname;
+set @distributiondb =(select name from sys.sysdatabases where name ='distribution');
+/*drop the distribution database */
+exec sp_dropdistributiondb @distributiondb;
+
+/*remove the local Distributor */
+exec sp_dropdistributor;
+
+   go
+
+Listing 2-1. Configuring the Distributor server and the distribution database
+Use master
+go
+/* declare the variables */
+declare @distributor as sysname;
+declare @distributorserver_msg as varchar(50);
+
+/*get the default instance of the name of the server
+and use that as the Distributor */
+
+set @distributor = (select convert (sysname,serverproperty('servername')));
+
+/*set the name and then print the name of the Distributor server */
+
+set @distributorserver_msg='The name of the Distributor server:';
+print @distributorserver_msg + ' ' +@distributor;
+/* add the Distributor */
+exec sp_adddistributor @distributor=@distributor;
+
+/* install the distribution database on the default directory
+ and use Windows Integrated Authentication*/
+
+declare @distributiondb as sysname;
+set @distributiondb ='distribution';
+exec sp_adddistributiondb @database =@distributiondb,@security_mode=1;
+go
+
+Listing 2-2. Configuring the Publisher server
+/* declare the variables */
+declare @distributor as sysname;
+declare @publisher as sysname;
+declare @publisherserver_msg as varchar (50);
+
+/*get the default instance of the name of the server and
+ use that as the Distributor */
+
+set @distributor = (select convert (sysname,serverproperty('servername')));
+
+
+/*set the name and then print the name of the Publisher server.
+The Publisher and the Distributor are residing on the same server */
+
+set @publisher =@distributor;
+set @publisherserver_msg='The name of the publisher server:';
+print @publisherserver_msg +' '+ @publisher;
+
+
+/*now add the Publisher to the same Distributor as
+installed locally --- remember that sp_adddistpublisher can
+be used for snapshot, transactional and merge replication*/
+
+use distribution
+
+declare @distributiondb as sysname;
+set @distributiondb ='distribution';
+exec sp_adddistpublisher @publisher, @security_mode=1, @distribution_db=@distributiondb, 
+@publisher_type = 'MSSQLSERVER';
+go
+Listing 2-3. Remote server link
+use master
+go
+/* declare the table variable */
+
+declare @servername_dist table
+(
+serverid smallint,
+servername sysname);
+
+/* want the names of the server id and the corresponding server names from the sys.sysservers and then insert into the table variable */
+
+insert into @servername_dist (serverid, servername) select srvid, srvname from 
+sys.sysservers;
+
+/* we then retrieve the name of the server from the table variable */
+
+select * from @servername_dist;
+go
+Listing 2-4. Retrieving the category type of the distribution database
+use master
+go
+/* declare the table variable */
+
+declare @databasename_dist table
+(
+dbname sysname,
+categorytype int,
+databaseid smallint
+);
+
+/* want the names of the database, the database id and the category type from the  sys.sysdatabases and then insert into the table variable */
+
+insert into @databasename_dist(dbname,databaseid,categorytype) select name, 
+dbid,category from sys.sysdatabases;
+
+/* we then retrieve the name, the id and the category type of the database from the table variable */
+select databaseid, dbname, categorytype from @databasename_dist order by 
+databaseid;
+go
+
+Listing 2-5. Retrieving the type of the Publisher and the security mode of the login
+use msdb
+go
+/* declare the table variable */
+
+declare @publishertype_dist table
+(
+servername sysname,
+distdb sysname,
+security int,
+publishertype sysname
+);
+/* want the names of the server, the database, the security mode and
+the Publisher type from the  MSdistpublishers and then insert into the
+table variable */
+
+insert into @publishertype_dist(servername,distdb,security,publishertype)
+select name, distribution_db,security_mode,publisher_type from
+MSdistpublishers;
+
+/* we then retrieve the names of the server, the database, the security mode and the Publisher type from the table variable */
+
+select servername,distdb,security,publishertype from @publishertype_dist;
+go
+Listing 2-6. Retrieving descriptions of the agent profiles
+use msdb
+go
+/*retieve data from MSagent_profiles to see the agent definition */
+
+select profile_id, 
+profile_name, 
+agent_type, 
+type, 
+description, 
+def_profile 
+from MSagent_profiles;
+go
+

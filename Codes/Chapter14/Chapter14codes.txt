@@ -1,0 +1,205 @@
+Listing 14-1. Listing the subsystems in SQL Server
+:setvar logintimeout 120
+:setvar server "BIO-V7V30JTZLZS\BIOREPL"
+:setvar user "sa"
+:setvar pwd "sujoy"
+:connect $(server) -l $(logintimeout) -U $(user) -P $(pwd)
+USE msdb
+go
+
+sp_enum_sqlagent_subsystems
+go
+Listing 14-2. Listing the proxies and corresponding credentials for the Replication Merge subsystem
+/*Set the SQLCMD variables and the connection settings first*/
+
+:setvar logintimeout 120
+:setvar server "BIO-V7V30JTZLZS\BIOREPL"
+:setvar user "sa"
+:setvar pwd "sujoy"
+:connect $(server) -l $(logintimeout) -U $(user) -P $(pwd)
+
+set nocount on
+
+/* Need to run this on the msdb database */
+use msdb
+go
+
+select a.subsystem_id,
+a.subsystem,
+a.description_id,
+a.subsystem_dll,
+a.agent_exe,
+a.max_worker_threads,
+c.flags,
+d.proxy_id,
+d.name as proxyname,
+d.enabled,
+d.description,
+d.user_sid,
+e.credential_id,
+e.name as credentialname,
+e.credential_identity,
+e.create_date as credentialcreatedate, e.modify_date as credentialmodifydate,
+f.sid,
+f.status,
+f.createdate as logincreatedate,
+f.name as loginname,
+f.sysadmin,
+f.isntuser
+
+into #proxies
+
+from syssubsystems a,
+sysproxysubsystem b,
+sysproxylogin c,
+sysproxies d,
+sys.credentials e,
+sys.syslogins f
+
+where a.subsystem_id=b.subsystem_id and
+      b.proxy_id=c.proxy_id and
+      c.proxy_id=d.proxy_id and
+      d.credential_id=e.credential_id and
+      c.sid=f.sid
+
+/* Count to see that proxies exist */
+
+declare @countmerge int
+set @countmerge=
+(select subsystem_id from #proxies
+where subsystem like 'merge'
+group by subsystem_id
+having count(0)>1)
+
+/* If the number of counts is 1 or more then find those proxies that belong to the merge subsystem */
+
+if (@countmerge >0)
+begin
+select * from #proxies where subsystem like 'merge';
+end
+
+/*Finally drop the temp table #proxies */
+
+drop table #proxies
+go
+
+From the sidebar on Database Triggers
+
+create trigger ddlmysales_merge
+on database
+for drop_table, drop_view, drop_procedure,
+alter_table, alter_view, alter_procedure,
+create_table, create_view, create_procedure
+as
+declare @eventdata xml
+
+set @eventdata=eventdata()
+
+select
+@eventdata.value('(/EVENT_INSTANCE/EventType)[1]','varchar(100)') as [EventType],
+@eventdata.value('(/EVENT_INSTANCE/PostTime)[1]','varchar(100)') as [PostTime],
+@eventdata.value('(/EVENT_INSTANCE/SPID)[1]','varchar(25)') as [SPID],
+@eventdata.value('(/EVENT_INSTANCE/ServerName)[1]','varchar(30)') as [Servername],
+@eventdata.value('(/EVENT_INSTANCE/LoginName)[1]','varchar(30)') as [Loginname],
+@eventdata.value('(/EVENT_INSTANCE/TSQLCommand/CommandText)[1]','varchar(2000)') as [CommandText]
+
+
+raiserror('Create, drop and alter statements for tables, 
+views and procedures not allowed',16,1)
+rollback
+go
+Listing 14-3. Viewing the code for the sp_MSinitdynamicsubscriber stored procedure
+/*Execute this on the publication database */
+
+Use mysales_mergevwusp
+go
+sp_helptext 'sp_MSinitidynamicsubscriber'
+go
+
+Listing 14-4. Checking the stored procedures in view_sel_proc for associated dynamic filters
+/* Execute this on the publication database */
+
+Use mysales_mergevwusp
+Go
+
+select a.filtername,
+a.join_articlename,
+a.join_unique_key,
+a.expand_proc,
+a.join_filterclause,
+a.filter_type,
+b.column_tracking,
+b.status,
+b.insert_proc,
+b.update_proc,
+b.select_proc,
+b.metadata_select_proc,
+b.resolver_info,
+b.view_sel_proc
+from sysmergesubsetfilters a,sysmergearticles b
+where a.art_nickname=b.nickname
+go
+
+Listing 14-5. The objects on which the  MSmerge_sel_2FECAB1A04FA41911A6BFA3A3EA14622 stored procedure depends
+/*Execute this on the publication database */
+Use mysales_mergevwusp
+Go
+Sp_depends 'MSmerge_sel_2FECAB1A04FA41911A6BFA3A3EA14622'
+go
+
+Listing 14-6. Determining the total number of changes for a generation that is already closed
+/*Execute this on the publication database */
+Use mysales_mergevwusp
+Go
+
+select a.generation,
+count(*) as changecount,
+b.nickname
+from MSmerge_genhistory a,
+MSmerge_contents c,
+sysmergearticles b
+where  c.generation = a.generation
+and b.nickname=c.tablenick
+and c.generation = a.generation
+and  a.genstatus<>0
+group by a.generation, b.nickname
+go
+Listing 14-7. Finding the generation that has been deleted
+/*Execute this on the publication database */
+
+Use mysales_mergevwusp
+Go
+select a.generation,
+count(*) as changecount,
+b.nickname
+from MSmerge_genhistory a,
+MSmerge_tombstone t,
+sysmergearticles b
+where t.generation = a.generation
+and b.nickname=t.tablenick
+and a.genstatus<>0
+group by a.generation, b.nickname
+go
+Listing 14-8. Determining the location of the dynamic snapshot and the dynamic login name 
+/* Execute this on the publication database used for parameterized filters */
+Use mysales_mergevwusp
+Go
+
+select a.name,
+a.pubid,
+a.job_id,
+a.agent_id,
+a.dynamic_filter_login,
+a.dynamic_snapshot_location,
+b.partition_id,
+b.last_started
+from MSdynamicsnapshotjobs a
+left outer join  MSmerge_dynamic_snapshots b on
+a.partition_id=b.partition_id
+go
+From the sidebar Conflict Resolvers
+
+/*execute this on the publication database */
+Use merge_mysalesvwusp
+Go
+Exec sp_enumcustomresolvers

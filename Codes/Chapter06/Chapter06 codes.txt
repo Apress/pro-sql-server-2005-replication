@@ -1,0 +1,41 @@
+Listing 6-1. Execute the sp_lock stored procedure
+/*Execute this on the publication database */
+
+Use mysales
+Go
+
+Exec sp_lock
+
+Listing 6-2. Viewing manager resources of active locks held by the publication database
+/* Execute this on the publication database */
+Use mysales
+Go
+
+Select * from sys.dm_tran_locks
+Listing 6-3. Getting size information for sparse files in the current database file
+/* Need to run from the current publication database */
+/* Declare the variables */
+declare @dbname sysname
+declare @fileid int
+declare @dbid smallint
+
+/* Get the name of the current database */
+set @dbname =(select db_name(db_id()));
+
+/* Get the current database id */
+set @dbid = (select db_id());
+
+/* Get the ID of the data file for the current database.
+ Type=0 from the sys.database_files correspond to the
+data file while type=1 correspond to the log file */
+
+set @fileid= (select file_id from sys.database_files where type=0);
+
+/*Get the maximum bytes on the disk for the current data file and the corresponding SQL Server pages from fn_virtualfilestats */
+
+select db_name(db_id()) as currentdatabase,
+bytesondisk, 
+(bytesondisk/8192)as pages
+from
+fn_virtualfilestats (@dbid,@fileid)
+

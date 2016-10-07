@@ -1,0 +1,58 @@
+From the sidebar Performance Counters
+Use master
+go
+select * from sys.dm_os_performance_counters
+where object_name like 'SQLServer:Replication%'
+
+Listing 17-1. Listing locks held by the different databases
+/*Execute this on the publication database */
+
+use mysales_snapshot_pub
+go
+
+SELECT a.resource_type,
+a.resource_associated_entity_id,
+a.request_status,
+a.request_mode,
+a.request_session_id as spid,
+a.request_owner_type as [OwnerType],
+a.resource_description,
+b.dbid,
+b.name
+FROM sys.dm_tran_locks a,
+sys.sysdatabases b
+WHERE a.resource_database_id >=1
+Go
+
+Listing 17-2. Relating event classes to event categories 
+/*Execute this on the snapshotreplication_perftrace database */
+use snapshotreplication_perftrace
+go
+
+select a.name as [EventClassName],
+a.trace_event_id as [EventTrace],
+b.category_id,
+b.name as [Category],
+b.type,
+c.subclass_name
+from sys.trace_events a,
+sys.trace_categories b,
+sys.trace_subclass_values c
+where b.category_id=a.category_id and
+a.trace_event_id=c.trace_event_id and
+b.name in ('TSQL','locks','stored procedures')
+go
+Listing 17-3. Finding CPU-intensive stored procedures and their duration of execution
+/*Execute this on the trace database */
+use snapshotreplication_perftrace
+go
+select eventclass,
+textdata,
+applicationname,
+spid,
+duration,
+cpu
+from snapshotreplication_perftrace
+/* eventclass=35 corresponds to SP:Completed */
+where eventclass=35
+go

@@ -1,0 +1,3 @@
+README.TXT
+
+The zip file contains code listings for Chapters 2,5,6,7,9,10,13,14,15,16,17,18,19, Appendix B and the README.TXT.  The code listings are listed under the respective chapter directories in the zip file.  There are 168 code listings in the book. The code listings for the Sidebars in the chapters are also included.  Chapters 2,5,14 and 17 contain the Sidebar code listings.  There are 6 Sidebar code listings in the book.  Appendix B contains the code for the mysales database schema used in the book.

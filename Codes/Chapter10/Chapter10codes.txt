@@ -1,0 +1,424 @@
+Listing 10-1. Executing the DBCC command
+/* Execute this on the database whose information you want. */
+
+/* First turn the trace on using dbcc traceon.*/
+
+DBCC traceon(3604)
+
+/* Now declare the variable. */
+declare @dbid int;
+
+/* Select the db id and place the value in the variable. */
+set @dbid=(select db_id('purchaseorder_repl'));
+
+/* Then call the dbcc log command. */
+
+dbcc log(@dbid,2)
+/* Now turn the traceoff using dbcc traceoff.*/
+
+DBCC traceoff(3604)
+
+Listing 10-2. Returning all information using the fn_dblog command
+/* Execute this on the publication database, purchaseorder_repl, 
+on the Publisher server, BIOREPL_PEER. */
+/* You can use other database as well, here I am using the purchaseorder_repl database */
+
+Use purchaseorder_repl
+Go
+
+select * from fn_dblog(null,null)
+
+Listing 10-3. Retrieving all the inserted rows in the publication database, purchaseorder_repl
+/*Execute this on the publication database, purchaseorder_repl, 
+on the Publisher server, BIOREPL_PEER. */
+
+select [AllocUnitId],
+[AllocUnitName],
+count([Current LSN])as TotalLSN,
+command,description
+from fn_dblog(null, null)
+where Operation ='LOP_INSERT_ROWS'
+group by  [AllocUnitId],[AllocUnitName],[command],[description]
+go
+
+Listing 10-4. Updating a row of the table vendor in the purchaseorder_repl database 
+/* Update a row in the publication database, purchaseorder_repl, 
+in the Publisher server, BIOREPL_PEER.*/
+
+update vendor
+set whse_postal_code='30033'
+where vendorid=105
+
+Listing 10-5. Retrieving transactions held in the MSrepl_commands table
+/* Execute this on the distribution database. */
+use distribution
+go
+
+select * from msrepl_commands where
+publisher_database_id=
+(select database_id from sys.databases where name
+like 'mysales')
+go
+
+Listing 10-6. Inserting data in the subscription database
+/* Insert the records in the queued updating subscription database. */
+Use mysales_remote_queueupd
+go
+
+Insert into myorder.Customer(CustID, BillTo, Name, WhseAddress1,
+Whse_City, Whse_postal_code, Phone, Country,msrepl_tran_version)
+ values(8,160,'GauriMitra', '21 Laketown Ave.','Oakville',
+'L6H 4A5','1-800-123-4567','Canada',newid())
+Go
+Insert into myorder.Customer(CustID, BillTo, Name, WhseAddress1,
+ Whse_City, Whse_postal_code, Phone, Country,msrepl_tran_version)
+ values(8,160,'GauriMitra', '21 Laketown Ave.','Oakville',
+'L6H 4A5','1-800-123-4567','Canada',newid())
+go
+
+Listing 10-7. Retrieving the number of commands for a transaction waiting to be picked up by the Queue Reader Agent
+/* Execute this on the subscription database.*/
+Use mysales_remote_queueupd
+Go
+
+select a.commandcount,
+b.publication
+from MSrepl_queuedtraninfo a,
+Msreplication_queue b
+where a.tranid=b.tranid
+go
+Listing 10-8. Updating the phone number in both the Subscribing database and the publication database
+/* Execute the update on the queued updating subscription database. */
+
+Use mysales_remote_queueupd
+go
+update myorder.Customer
+set Phone='1-866-234-5432'
+where country='Nepal'
+go
+
+/* Now execute the update on the publication database for the
+ queued updating subscription. */
+
+use mysales
+go
+update myorder.Customer
+set Phone='1-866-234-6789'
+where country='Nepal'
+go
+
+Listing 10-9. Viewing the marker for peer-to-peer replication
+/* Execute this on the distribution database. */
+use distribution
+go
+set nocount on
+go
+
+/* Find the not null values for the originator_lsn,
+ the publication_id, and the dbversion. */
+
+select b.id,
+a.publisher_database_id,
+a.originator_lsn,
+
+a.xact_seqno,b.publication_id,
+b.srvname,
+
+b.dbname,
+b.dbversion
+from MSrepl_commands a,MSrepl_originators b
+where a.publisher_database_id = b.publisher_database_id and
+a.originator_lsn is not null and
+b.dbversion is not null and
+b.publication_id is not null
+order by a.publisher_database_id
+go
+Listing 10-10. Viewing the marker stored in the MScached_peer_lsns table
+/* Execute on the distribution database. */
+Use distribution
+go
+
+select agent_id,originator,originator_db,
+originator_lsn, originator_db_version
+from MScached_peer_lsns
+go
+
+Listing 10-11. Finding the last transaction sequence number
+/* Execute this on the distribution database. */
+use distribution
+go
+
+/* Declare a variable to store the Publisher database id */
+
+declare @publisherdbid int
+
+/* Get the Publisher database id from the MSdistribution_agents 
+table. */
+
+set @publisherdbid=
+(select publisher_database_id
+from msdistribution_agents
+
+/* The name of the Publisher and the Subscriber database is 
+the same. */
+
+where publisher_db=subscriber_db)
+
+/* The maximum transaction sequence number is the 
+last sequence number. */
+
+select max(xact_seqno) as lastseqno
+from msrepl_commands
+where publisher_database_id=@publisherdbid and command_id=1
+go
+
+Listing 10-12. Tracking the status of the transactions for the peer node, BIOREPL_PEER
+/*Execute this on purchaseorder_repl on the BIOREPL_PEER node. */
+use purchaseorder_repl
+go
+
+/* First check whether the stored procedure exists. */
+
+IF OBJECT_ID ( 'usp_GetPeertoPeerList', 'P' ) IS NOT NULL
+    DROP PROCEDURE usp_GetPeertoPeerList;
+go
+set nocount on
+go
+
+/*Create the stored procedure */
+
+create procedure usp_GetPeertoPeerResponseList
+as
+select a.originator,
+a.originator_db,
+a.originator_db_version,
+a.originator_lsn,
+b.publication,
+c.publisher,
+c.publisher_db,
+c.subscription_type,
+c.update_mode,
+c.failover_mode
+from MSpeer_lsns as a,
+MSpeer_request as b,
+MSsubscription_agents as c
+where a.id=b.id and a.id=c.id
+order by originator_lsn
+go
+
+Listing 10-13. Getting the names of subscribing databases for the standard publication
+/*Execute this on the mysales_copy publication database on the BIOREPL_PEER node*/
+use mysales_copy
+go
+
+/* First check whether the stored procedure exists. */
+
+IF OBJECT_ID ( 'usp_GetSubForStdPublication', 'P' ) IS NOT NULL
+    DROP PROCEDURE usp_GetSubForStdPublication;
+go
+set nocount on
+go
+
+/*Create the stored procedure. */
+
+create procedure usp_GetSubForStdPublication
+as
+select a.artid,b.dest_db,
+b.subscription_type,b.timestamp,
+b.srvname,c.pubid,
+c.name,c.replicate_ddl
+from syspublications c,
+syssubscriptions b,
+sysarticles a
+where b.dest_db<>'virtual'and b.subscription_type=0
+and a.artid=b.artid
+and a.del_cmd <>'vcall%'and a.upd_cmd<>'vcall%' and
+a.ins_cmd <>'vcall%'
+and c.name='pub_mysales_copy_myinventory'
+go
+
+
+
+
+Listing 10-14. Articles in horizontal partitioning
+/* Execute this on the publication database. */
+use mysales_copy
+go
+
+/* First check whether the stored procedure exists. */
+
+IF OBJECT_ID ( 'usp_GetArticleUsedHorizontalPartition', 'P' ) IS NOT NULL
+    DROP PROCEDURE usp_GetArticleUsedHorizontalPartition;
+go
+set nocount on
+go
+
+/*Create the stored procedure. */
+
+create procedure usp_GetArticleUsedHorizontalPartition
+as
+
+select a.artid,
+b.dest_db,
+b.subscription_type,
+
+b.timestamp,
+b.srvname,c.pubid,
+c.name,c.replicate_ddl
+
+into dbo.syspubsubart
+from syspublications c,
+syssubscriptions b, sysarticles a
+where b.dest_db<>'virtual'and b.subscription_type=0
+and a.artid=b.artid
+and a.del_cmd<>'vcall%'and a.upd_cmd<>'vcall%'
+and a.ins_cmd<>'vcall%'
+and c.name='pub_mysales_copy_myinventory'
+go
+
+/*Now select from the syspubsubart table */
+
+select * from dbo.syspubsubart
+go
+/* Find the articles involved in horizontal partitioning */
+select a.artid,
+a.del_cmd,
+a.ins_cmd,
+a.upd_cmd,
+a.dest_table,
+a.filter_clause,
+a.dest_owner,a.type,
+b.dest_db,b.name
+from sysarticles a, dbo.syspubsubart b
+where a.artid=b.artid and
+a.pubid=b.pubid and
+a.filter<>0
+go
+Listing 10-15. Inserting data into the myorder.Stock table in the publication database
+/* Execute this on the mysales_copy publication database
+ on the BIOREPL_PEER instance. */
+
+Use mysales_copy
+Go
+
+/* Insert the values. */
+
+insert into 
+myorder.Stock(StockId,Whse,QtyOnHand,QtyOnOrd,QtyAvail,ItemNum)
+values(1026,31,25,5000,25,1026)
+insert into
+ myorder.Stock(StockId,Whse,QtyOnHand,QtyOnOrd,QtyAvail,ItemNum)
+values(1027,31,1000,1700,100,1030)
+insert into
+ myorder.Stock(StockId,Whse,QtyOnHand,QtyOnOrd,QtyAvail,ItemNum)
+values(1028,31,400,6000,150,1031)
+insert into 
+myorder.Stock(StockId,Whse,QtyOnHand,QtyOnOrd,QtyAvail,ItemNum)
+values(1029,21,1000,4000,3000,1032)
+
+go
+
+/*Now check to see that the data has been replicated 
+in the mysalescopy_std_remotepush subscription database */
+
+use mysalescopy_std_remotepush
+go
+
+select stockid, Whse,QtyOnHand,QtyOnOrd,QtyAvail,ItemNum
+from myorder.Stock
+go
+Listing 10-16. Replicating rows from the publication database
+/* Execute this on the distribution database. */
+
+Use distribution
+Go
+
+/* Select the id of the row, the push subscription values. */
+/* Ensure that the sync_method is used for transactional replication */
+
+select a.id,
+b.allow_push,
+b.publisher_db,
+
+b.sync_method,
+b.description
+from MSpublications b,MSpublisher_databases a
+
+where a.publisher_id=b.publisher_id
+and b.publication_type=0
+and b.publication ='pub_mysales_copy_myinventory'
+order by a.id
+go
+
+Listing 10-17. Retrieving the transaction sequence number and the date of entry in the distribution database
+/*Execute this on the distribution database. */
+
+Use distribution
+Go
+
+/* Create a table variable to hold the data. */
+
+declare @transactionentry table
+(xactseqno varbinary(16),
+entrytime datetime,
+command varbinary(1024)
+)
+
+/* Insert the data into the table variable. */
+
+insert into @transactionentry
+/* Select  transaction sequence numbers for the same publisher_database_id. For the MSrepl_commands and MSrepl_transactions system tables */
+
+select b.xact_seqno,
+b.entry_time,
+a.command
+from MSrepl_commands a, MSrepl_transactions b
+where a.publisher_database_id=b.publisher_database_id
+
+/* Now check the data. */
+select * from @transactionentry
+
+/*Now check the last transaction number. */
+
+select max(xactseqno) as lastseqno from @transactionentry
+go
+
+Listing 10-18. Finding out the number of undelivered transactions
+/*Execute this on the distribution database. */
+
+Use distribution
+Go
+
+/* Count the distinct number of transactions */
+
+select  count(distinct xact_seqno) as undeliveredtransactions
+from MSrepl_commands a WITH (NOLOCK)
+JOIN dbo.MSsubscriptions b
+ON (a.article_id = b.article_id
+AND a.publisher_database_id=b.publisher_database_id )
+
+/* Want to know only for the 'mysalescopy_stpub_remotepush' subscribing database and for push subscription.*/
+
+where b.subscriber_db like 'mysalescopy_stpub_remotepush'
+
+/* Now get the agent_id from the MSdistribution_agents table. */
+
+and b.subscription_type=0 and b.agent_id=4
+go
+
+Listing 10-19. Retrieving a list of publications and their corresponding subscriptions in transactional replication
+/* Execute this on the distribution database. */
+
+Use distribution
+Go
+
+Select  * from MSsubscriptions a
+Join MSpublications p
+On (  a.publisher_id = p.publisher_id and
+     a.publisher_db = p.publisher_db and
+     a.publication_id = p.publication_id )
+where
+      (p.sync_method = 3 or p.sync_method = 4)
+ and subscriber_db<>'virtual'
+ go
+
